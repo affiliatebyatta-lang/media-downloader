@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-red: #ec4899; /* pink-500 matching the Frosted Glass theme */
+  --color-brand-red-hover: #db2777; /* pink-600 */
+}
+
+/* Frosted Glass Theme Specific Styles */
+.glass-card-dark {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.4);
+}
+
+.glass-card-light {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(236, 72, 153, 0.15);
+  box-shadow: 0 10px 40px 0 rgba(236, 72, 153, 0.04);
+}
+
+/* Custom interactive button glow */
+.glow-red {
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.3);
+  transition: all 0.3s ease;
+}
+.glow-red:hover {
+  box-shadow: 0 0 30px rgba(236, 72, 153, 0.6);
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+

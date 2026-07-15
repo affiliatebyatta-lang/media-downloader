@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  pin-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pin-media-downloader
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

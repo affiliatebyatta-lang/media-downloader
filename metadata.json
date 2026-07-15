@@ -1,0 +1,6 @@
+{
+  "name": "Pin Media Downloader",
+  "description": "Download publicly accessible Pinterest videos, images, and GIFs by pasting a Pinterest URL. Features high-quality downloads, history, and a modern glassmorphic interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
