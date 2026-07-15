@@ -15,6 +15,8 @@ interface RecentDownloadsProps {
 }
 
 export default function RecentDownloads({ history, onSelect, onClearHistory }: RecentDownloadsProps) {
+  const [failedImages, setFailedImages] = React.useState<Record<string, boolean>>({});
+
   if (history.length === 0) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8 text-center" id="recent-downloads">
@@ -66,14 +68,25 @@ export default function RecentDownloads({ history, onSelect, onClearHistory }: R
             id={`recent-download-item-${item.id}`}
           >
             {/* Image Thumbnail */}
-            <div className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border dark:border-slate-800 border-slate-200 bg-slate-950/5">
-              <img
-                src={item.thumbnail}
-                alt={item.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-              />
+            <div className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border dark:border-slate-800 border-slate-200 bg-slate-950/5 flex items-center justify-center">
+              {!failedImages[item.id] && item.thumbnail ? (
+                <img
+                  src={item.thumbnail}
+                  alt={item.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                  onError={() => setFailedImages(prev => ({ ...prev, [item.id]: true }))}
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-pink-500/20 to-rose-600/20 flex items-center justify-center">
+                  {item.mediaType === "video" ? (
+                    <Film className="w-5 h-5 text-pink-500/70" />
+                  ) : (
+                    <ImageIcon className="w-5 h-5 text-pink-500/70" />
+                  )}
+                </div>
+              )}
               <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                 <PlayCircle className="w-5 h-5 text-white animate-pulse" />
               </div>

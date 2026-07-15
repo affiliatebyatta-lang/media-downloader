@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { MediaMetadata } from "../types";
-import { Download, Copy, Share2, Sparkles, Check, RefreshCw, Film, Image as ImageIcon, FileWarning, Heart } from "lucide-react";
+import { Download, Copy, Share2, Sparkles, Check, RefreshCw, Film, Image as ImageIcon, FileWarning, Heart, Play } from "lucide-react";
 import { motion } from "motion/react";
 
 interface ResultCardProps {
@@ -17,6 +17,15 @@ interface ResultCardProps {
 export default function ResultCard({ metadata, onClear, addToast }: ResultCardProps) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const videoOption = metadata.downloads.find(item => item.type.startsWith("video/"));
+
+  React.useEffect(() => {
+    setImageError(false);
+    setIsPlaying(false);
+  }, [metadata.sourceUrl]);
   
   const [isFavorite, setIsFavorite] = useState<boolean>(() => {
     try {
@@ -151,22 +160,65 @@ export default function ResultCard({ metadata, onClear, addToast }: ResultCardPr
           {/* Left Side: Thumbnail Preview */}
           <div className="md:col-span-5 flex flex-col items-center">
             <div className="relative group rounded-2xl overflow-hidden shadow-md border dark:border-slate-800 border-slate-200 aspect-square w-full max-w-[280px] bg-slate-900/10 flex items-center justify-center">
-              <img
-                src={metadata.thumbnail}
-                alt={metadata.title || "Pinterest Thumbnail"}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-                id="result-media-thumbnail"
-              />
-              <div className="absolute bottom-3 left-3 bg-pink-500 text-white px-2.5 py-1 rounded-lg text-xs font-semibold uppercase flex items-center gap-1 shadow-md">
-                {metadata.mediaType === "video" ? (
-                  <Film className="w-3.5 h-3.5" />
-                ) : (
-                  <ImageIcon className="w-3.5 h-3.5" />
-                )}
-                <span className="font-bold tracking-wider">{metadata.mediaType}</span>
-              </div>
+              {isPlaying && videoOption ? (
+                <video
+                  src={videoOption.url}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-contain bg-slate-950"
+                  id="result-media-video"
+                />
+              ) : (
+                <>
+                  {!imageError && metadata.thumbnail ? (
+                    <img
+                      src={metadata.thumbnail}
+                      alt={metadata.title || "Pinterest Thumbnail"}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      onError={() => setImageError(true)}
+                      id="result-media-thumbnail"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-pink-500/20 to-rose-600/20 flex flex-col items-center justify-center p-6 text-center animate-pulse">
+                      {metadata.mediaType === "video" ? (
+                        <Film className="w-14 h-14 text-pink-500/80 mb-2.5" />
+                      ) : (
+                        <ImageIcon className="w-14 h-14 text-pink-500/80 mb-2.5" />
+                      )}
+                      <span className="text-xs font-bold tracking-wide dark:text-pink-400 text-pink-600 uppercase">
+                        Preview Loaded
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Play Overlay Button for Video */}
+                  {videoOption && (
+                    <button
+                      type="button"
+                      onClick={() => setIsPlaying(true)}
+                      className="absolute inset-0 bg-black/35 group-hover:bg-black/45 transition-colors flex items-center justify-center cursor-pointer group/btn"
+                      title="Play Video Preview"
+                      id="play-video-overlay-btn"
+                    >
+                      <div className="w-16 h-16 rounded-full bg-pink-500 hover:bg-pink-600 text-white flex items-center justify-center shadow-lg shadow-pink-500/30 transition-all transform group-hover/btn:scale-110 active:scale-95 duration-300">
+                        <Play className="w-8 h-8 fill-current ml-1" />
+                      </div>
+                    </button>
+                  )}
+
+                  <div className="absolute bottom-3 left-3 bg-pink-500 text-white px-2.5 py-1 rounded-lg text-xs font-semibold uppercase flex items-center gap-1 shadow-md">
+                    {metadata.mediaType === "video" ? (
+                      <Film className="w-3.5 h-3.5" />
+                    ) : (
+                      <ImageIcon className="w-3.5 h-3.5" />
+                    )}
+                    <span className="font-bold tracking-wider">{metadata.mediaType}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

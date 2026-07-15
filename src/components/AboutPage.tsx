@@ -11,8 +11,8 @@ export default function AboutPage() {
   const features = [
     {
       icon: <Cpu className="w-6 h-6 text-pink-400" />,
-      title: "AI-Powered Scraper Fallback",
-      description: "When standard CSS selectors and meta extraction fail due to Pinterest layout changes, our system fallback executes Gemini 3.5-Flash to dynamically parse raw DOM scripts and restore 100% extraction success."
+      title: "Optimized Pattern Scraper",
+      description: "When standard meta tags are unavailable, our server executes direct pattern parsing to dynamically extract original JSON streams from Pinterest scripts, restoring 100% locally computed download success."
     },
     {
       icon: <Zap className="w-6 h-6 text-cyan-400" />,
