@@ -265,6 +265,9 @@ export default function ResultCard({ metadata, onClear, addToast }: ResultCardPr
                       {/* Force Download Link (Using proxy) */}
                       <a
                         href={getProxyDownloadUrl(item.url, item.quality)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
                         className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-pink-500 to-rose-600 hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] rounded-lg shadow transition-all duration-150 active:scale-95 text-center cursor-pointer"
                         title="Download file directly to your device"
                         id={`btn-direct-download-${index}`}

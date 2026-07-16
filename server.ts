@@ -319,14 +319,55 @@ app.get("/api/proxy", async (req, res): Promise<any> => {
     }
 
     const contentType = response.headers.get("content-type") || "application/octet-stream";
-    const extension = contentType.split("/")[1] || "mp4";
-    const filename = name ? `${name}.${extension}` : `pinterest-download.${extension}`;
+    
+    // Clean extension safely
+    let extension = "mp4";
+    if (contentType.includes("image/jpeg")) extension = "jpg";
+    else if (contentType.includes("image/png")) extension = "png";
+    else if (contentType.includes("image/gif")) extension = "gif";
+    else if (contentType.includes("video/mp4")) extension = "mp4";
+    else {
+      const parts = contentType.split("/");
+      if (parts[1]) {
+        extension = parts[1].split(";")[0].trim();
+      }
+    }
 
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    // Clean filename for standard ASCII and URL encoded fallback
+    const baseName = name && typeof name === "string"
+      ? name.replace(/[^a-zA-Z0-9-_]/g, "-")
+      : "pinterest-download";
+
+    const asciiFilename = `${baseName}.${extension}`;
+    const encodedFilename = encodeURIComponent(asciiFilename);
+
+    // Set headers with both standard fallback and RFC 5987 UTF-8 representation
+    res.setHeader("Content-Disposition", `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
     res.setHeader("Content-Type", contentType);
 
-    const arrayBuffer = await response.arrayBuffer();
-    return res.send(Buffer.from(arrayBuffer));
+    // Optimize streaming: Stream chunk-by-chunk rather than loading into RAM.
+    // Extremely memory-friendly for all hosting providers (like Cloud Run) and ensures huge file downloads succeed.
+    if (response.body) {
+      const reader = response.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          res.write(value);
+        }
+        res.end();
+      } catch (streamErr) {
+        console.error("Error streaming file chunk:", streamErr);
+        if (!res.headersSent) {
+          res.status(500).send("Error streaming the media file");
+        }
+      }
+    } else {
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    }
   } catch (err: any) {
     console.error("Proxy endpoint error:", err);
     return res.status(500).send("Error downloading file via proxy");
