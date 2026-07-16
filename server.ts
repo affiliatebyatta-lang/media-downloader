@@ -873,6 +873,11 @@ const startServer = async () => {
   });
 };
 
-startServer().catch((err) => {
-  console.error("Failed to start server:", err);
-});
+// Export app for serverless (Vercel) hosting
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error("Failed to start server:", err);
+  });
+}
