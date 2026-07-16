@@ -73,21 +73,182 @@ const recordDownload = (url: string, mediaType: string, success: boolean, errorM
   statsMemory.popularUrls = statsMemory.popularUrls.slice(0, 10); // Keep top 10 popular
 };
 
-// Resolve short URLs
+// Resolve short URLs with a resilient GET/HEAD flow
 const resolveUrl = async (url: string): Promise<string> => {
   try {
+    // Prefer GET over HEAD since HEAD is heavily blocked or rate-limited by Pinterest
     const response = await fetch(url, {
-      method: "HEAD",
+      method: "GET",
       redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5"
       }
     });
-    return response.url;
+    return response.url || url;
   } catch (err) {
-    console.error("Error resolving redirect:", err);
-    return url;
+    console.error("Error resolving redirect with GET, trying HEAD fallback:", err);
+    try {
+      const response = await fetch(url, {
+        method: "HEAD",
+        redirect: "follow",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+      });
+      return response.url || url;
+    } catch (headErr) {
+      console.error("Error resolving redirect with HEAD:", headErr);
+      return url;
+    }
   }
+};
+
+// Converts mobile subdomains, regional subdomains, or AMP links to standard desktop www.pinterest.com URLs
+const canonicalizePinterestUrl = (url: string): string => {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("pinterest.")) {
+      u.hostname = "www.pinterest.com";
+    }
+    if (u.pathname.startsWith("/amp/")) {
+      u.pathname = u.pathname.replace(/^\/amp/, "");
+    }
+    return u.toString();
+  } catch (e) {
+    return url
+      .replace(/:\/\/(?:m|mobile|amp|ca|co\.uk|de|fr|it|es|br|jp|in|ru|nz|au)\.pinterest\./i, "://www.pinterest.")
+      .replace(/\/amp\/pin\//i, "/pin/");
+  }
+};
+
+// Extracts Pinterest Pin ID from a URL
+const extractPinId = (url: string): string => {
+  if (!url) return "";
+  const match = url.match(/\/pin\/(\d+)/i);
+  return match ? match[1] : "";
+};
+
+// Helper to decode escaped Unicode characters and HTML entities
+const unescapeHtmlAndUnicode = (str: string): string => {
+  if (!str) return "";
+  try {
+    return str
+      .replace(/\\u003a/gi, ":")
+      .replace(/\\u002f/gi, "/")
+      .replace(/\\u0026/gi, "&")
+      .replace(/\\u0022/gi, '"')
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, '"')
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/\\\//g, "/");
+  } catch (e) {
+    return str;
+  }
+};
+
+// Scans the full unescaped HTML content for direct video (.mp4) and high-res image links
+const deepScanMedia = (html: string) => {
+  const mp4Urls = new Set<string>();
+  const imageUrls = new Set<string>();
+  
+  const cleanedHtml = unescapeHtmlAndUnicode(html);
+  
+  // Regex to extract direct mp4 URLs on pinimg or other video assets
+  const mp4Regex = /(https?:\/\/[a-zA-Z0-9_\-\.\/]+?\.mp4[a-zA-Z0-9_\-\.\/\?\=\&\;\%\+]*)/gi;
+  let match;
+  while ((match = mp4Regex.exec(cleanedHtml)) !== null) {
+    const url = match[1];
+    if (url.includes("pinimg.com") || url.includes("mixkit.co") || url.includes("assets")) {
+      mp4Urls.add(url);
+    }
+  }
+
+  // Regex to extract high-res image URLs
+  const imgRegex = /(https?:\/\/i\.pinimg\.com\/[a-zA-Z0-9_\-\.\/]+?\.(?:jpe?g|png|webp|gif))/gi;
+  while ((match = imgRegex.exec(cleanedHtml)) !== null) {
+    const url = match[1];
+    imageUrls.add(getOriginalImageUrl(url));
+  }
+
+  return {
+    mp4s: Array.from(mp4Urls),
+    images: Array.from(imageUrls)
+  };
+};
+
+// Fetch Pinterest details securely using the official Pinterest Widgets API
+const fetchFromWidgetsAPI = async (pinId: string) => {
+  try {
+    console.log(`Fetching from Widgets API fallback for Pin ID: ${pinId}`);
+    const url = `https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=${pinId}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+      }
+    });
+    if (!response.ok) return null;
+    const json = await response.json() as any;
+    if (json && json.status === "success" && Array.isArray(json.data) && json.data.length > 0) {
+      const pin = json.data[0];
+      const title = pin.description ? (pin.description.split("\n")[0] || "Pinterest Pin") : "Pinterest Pin";
+      const description = pin.description || "";
+      
+      let rawImage = "";
+      if (pin.images) {
+        if (pin.images["736x"] && pin.images["736x"].url) {
+          rawImage = pin.images["736x"].url;
+        } else if (pin.images["474x"] && pin.images["474x"].url) {
+          rawImage = pin.images["474x"].url;
+        } else {
+          const firstKey = Object.keys(pin.images)[0];
+          if (firstKey && pin.images[firstKey] && pin.images[firstKey].url) {
+            rawImage = pin.images[firstKey].url;
+          }
+        }
+      }
+      
+      if (rawImage) {
+        rawImage = getOriginalImageUrl(rawImage);
+      }
+      
+      let rawVideo = "";
+      if (pin.videos && typeof pin.videos === "object") {
+        const videoList = pin.videos.video_list || pin.videos;
+        const qualities = ["V_720P", "V_HLSV4", "V_4K", "V_1080P", "V_540P", "V_360P", "V_240P"];
+        for (const q of qualities) {
+          if (videoList[q] && videoList[q].url && typeof videoList[q].url === "string" && videoList[q].url.endsWith(".mp4")) {
+            rawVideo = videoList[q].url;
+            break;
+          }
+        }
+        if (!rawVideo) {
+          for (const key in videoList) {
+            if (videoList[key] && videoList[key].url && typeof videoList[key].url === "string" && videoList[key].url.endsWith(".mp4")) {
+              rawVideo = videoList[key].url;
+              break;
+            }
+          }
+        }
+      }
+
+      return {
+        title,
+        description,
+        rawImage,
+        rawVideo,
+        isGif: rawImage.toLowerCase().includes(".gif")
+      };
+    }
+  } catch (err) {
+    console.error("Error fetching from Widgets API:", err);
+  }
+  return null;
 };
 
 // Upscale pinterest standard images to original size
@@ -433,8 +594,15 @@ app.post("/api/download", async (req, res): Promise<any> => {
     }
 
     // Follow redirects (e.g. for short links pin.it)
-    const longUrl = await resolveUrl(targetUrl);
+    let longUrl = await resolveUrl(targetUrl);
     console.log(`Resolved URL: ${longUrl}`);
+
+    // Canonicalize the URL (convert mobile/regional/AMP subdomains to standard desktop www.pinterest.com)
+    longUrl = canonicalizePinterestUrl(longUrl);
+    console.log(`Canonicalized Desktop URL: ${longUrl}`);
+
+    const pinId = extractPinId(longUrl);
+    console.log(`Extracted Pin ID: ${pinId}`);
 
     // High fidelity sample mock interceptor to guarantee "Ready to Download" screen works flawlessly in sandboxed preview
     if (longUrl.includes("687432322306782803") || targetUrl.includes("687432322306782803")) {
@@ -480,26 +648,69 @@ app.post("/api/download", async (req, res): Promise<any> => {
 
     // Fetch Pinterest Page HTML
     let html = "";
+    let htmlFetchSuccess = false;
     try {
       const pageResponse = await fetch(longUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.5"
+          "Accept-Language": "en-US,en;q=0.5",
+          "Cache-Control": "no-cache",
+          "Pragma": "no-cache"
         }
       });
-      if (!pageResponse.ok) {
-        return res.status(500).json({ success: false, error: `Failed to fetch Pinterest page (Status: ${pageResponse.status})` });
+      if (pageResponse.ok) {
+        html = await pageResponse.text();
+        htmlFetchSuccess = true;
+      } else {
+        console.warn(`Fetch HTML returned non-200 status: ${pageResponse.status}`);
       }
-      html = await pageResponse.text();
     } catch (fetchErr: any) {
-      console.error("Fetch error:", fetchErr);
-      return res.status(500).json({ success: false, error: "Failed to connect to Pinterest. Please check the link and try again." });
+      console.error("Fetch HTML error:", fetchErr);
     }
 
-    // Use our high-fidelity, recursive JSON block parser
-    const pinData = extractPinterestJSONData(html);
-    
+    let pinData: any = null;
+
+    if (htmlFetchSuccess && html) {
+      // Use our high-fidelity, recursive JSON block parser
+      pinData = extractPinterestJSONData(html);
+
+      // Deep scan unescaped HTML fallback to find any raw video/image links
+      if (!pinData.rawVideo || !pinData.rawImage) {
+        const deepScanned = deepScanMedia(html);
+        if (!pinData.rawVideo && deepScanned.mp4s.length > 0) {
+          pinData.rawVideo = deepScanned.mp4s[0];
+        }
+        if (!pinData.rawImage && deepScanned.images.length > 0) {
+          pinData.rawImage = deepScanned.images[0];
+        }
+      }
+    }
+
+    // If scraping yielded no media results (or failed/was blocked entirely), trigger Widgets API fallback
+    if ((!pinData || !pinData.rawImage) && pinId) {
+      console.log(`Scraping found no media or failed. Retrying with official Widgets API for Pin ID: ${pinId}`);
+      const widgetData = await fetchFromWidgetsAPI(pinId);
+      if (widgetData) {
+        if (!pinData) {
+          pinData = widgetData;
+        } else {
+          if (!pinData.rawVideo && widgetData.rawVideo) pinData.rawVideo = widgetData.rawVideo;
+          if (!pinData.rawImage && widgetData.rawImage) pinData.rawImage = widgetData.rawImage;
+          if (pinData.title === "Pinterest Media" || pinData.title === "Pinterest Pin") {
+            pinData.title = widgetData.title;
+          }
+          if (!pinData.description) pinData.description = widgetData.description;
+          pinData.isGif = pinData.isGif || widgetData.isGif;
+        }
+      }
+    }
+
+    // If we still don't have pinData, throw an error
+    if (!pinData) {
+      return res.status(404).json({ success: false, error: "Could not fetch or parse any data for this URL. Please verify the link is correct." });
+    }
+
     // Set up downloads array
     const downloads: { quality: string; url: string; type: string }[] = [];
     let detectedMediaType = pinData.rawVideo ? "video" : (pinData.isGif ? "gif" : "image");
@@ -556,9 +767,9 @@ app.post("/api/download", async (req, res): Promise<any> => {
 
     return res.json({
       success: true,
-      title: pinData.title,
-      description: pinData.description,
-      thumbnail: pinData.rawImage,
+      title: pinData.title || "Pinterest Pin",
+      description: pinData.description || "",
+      thumbnail: pinData.rawImage || "",
       downloads,
       sourceUrl: longUrl,
       mediaType: detectedMediaType
