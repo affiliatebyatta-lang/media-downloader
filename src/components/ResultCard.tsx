@@ -19,6 +19,7 @@ export default function ResultCard({ metadata, onClear, addToast }: ResultCardPr
   const [isSharing, setIsSharing] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
 
   const videoOption = metadata.downloads.find(item => item.type.startsWith("video/"));
 
@@ -110,6 +111,46 @@ export default function ResultCard({ metadata, onClear, addToast }: ResultCardPr
       : "pinterest-download";
     const qualityTag = quality.toLowerCase().replace(/\s+/g, "-");
     return `/api/proxy?url=${encodeURIComponent(url)}&name=${encodeURIComponent(`${fileName}-${qualityTag}`)}`;
+  };
+
+  const handleDownloadClick = async (e: React.MouseEvent, url: string, quality: string, index: number) => {
+    e.preventDefault();
+    if (downloadingIndex !== null) return;
+    
+    setDownloadingIndex(index);
+    const proxyUrl = getProxyDownloadUrl(url, quality);
+    
+    addToast("Preparing your download...", "info");
+    
+    try {
+      // Fast check to see if the proxy endpoint exists on this host (handles 404 NOT_FOUND on static/sub-hosting)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 seconds timeout
+      
+      const checkRes = await fetch(proxyUrl, {
+        method: "HEAD",
+        signal: controller.signal
+      }).catch(() => null);
+      
+      clearTimeout(timeoutId);
+      
+      if (checkRes && checkRes.ok) {
+        // Proxy works! Open in current window to trigger instant browser download headers
+        window.location.href = proxyUrl;
+        addToast("Download started successfully!", "success");
+      } else {
+        // Fallback: If 404/NOT_FOUND or failed (static hostings like Vercel, Netlify, Github Pages)
+        console.warn("Proxy endpoint is not available on this hosting. Falling back to direct URL.");
+        addToast("Opening direct file. Right-click or hold-to-save on mobile!", "info");
+        window.open(url, "_blank");
+      }
+    } catch (err) {
+      console.error("Proxy check failed, opening direct URL", err);
+      addToast("Opening direct file. Right-click or hold-to-save on mobile!", "info");
+      window.open(url, "_blank");
+    } finally {
+      setDownloadingIndex(null);
+    }
   };
 
   return (
@@ -262,19 +303,17 @@ export default function ResultCard({ metadata, onClear, addToast }: ResultCardPr
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
-                      {/* Force Download Link (Using proxy) */}
-                      <a
-                        href={getProxyDownloadUrl(item.url, item.quality)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-pink-500 to-rose-600 hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] rounded-lg shadow transition-all duration-150 active:scale-95 text-center cursor-pointer"
+                      {/* Force Download Button with resilient fallback to avoid NOT_FOUND errors */}
+                      <button
+                        onClick={(e) => handleDownloadClick(e, item.url, item.quality, index)}
+                        disabled={downloadingIndex === index}
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-pink-500 to-rose-600 hover:shadow-[0_0_15px_rgba(236,72,153,0.3)] rounded-lg shadow transition-all duration-150 active:scale-95 text-center cursor-pointer disabled:opacity-70 disabled:cursor-wait"
                         title="Download file directly to your device"
                         id={`btn-direct-download-${index}`}
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download</span>
-                      </a>
+                        <Download className={`w-3.5 h-3.5 ${downloadingIndex === index ? "animate-bounce" : ""}`} />
+                        <span>{downloadingIndex === index ? "Checking..." : "Download"}</span>
+                      </button>
 
                       {/* Copy Link */}
                       <button
