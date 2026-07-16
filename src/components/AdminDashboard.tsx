@@ -57,7 +57,14 @@ export default function AdminDashboard({ addToast }: AdminDashboardProps) {
   useEffect(() => {
     setIsLoading(true);
     fetch("/api/admin/stats")
-      .then((res) => res.json())
+      .then(async (res) => {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          return res.json();
+        }
+        const text = await res.text();
+        throw new Error(text || `Request failed with status ${res.status}`);
+      })
       .then((resData) => {
         if (resData.success) {
           setData(resData);

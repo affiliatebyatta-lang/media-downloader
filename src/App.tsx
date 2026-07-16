@@ -87,10 +87,18 @@ export default function App() {
         body: JSON.stringify({ url, format }),
       });
 
-      const data = await response.json();
+      let data: any;
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        const cleanText = text.length > 100 ? text.substring(0, 100) + "..." : text;
+        throw new Error(cleanText || `Request failed with status ${response.status}`);
+      }
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to fetch media from Pinterest pin.");
+        throw new Error(data?.error || "Failed to fetch media from Pinterest pin.");
       }
 
       // Success
